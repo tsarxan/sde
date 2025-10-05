@@ -1,11 +1,11 @@
 #include "main.hpp" 
 
 auto main( ) -> int {
-    auto test = std::thread( [ & ]( ) {
-        std::println( "Hello, from sde!" );
-        } );
+    ui_t ui( [ & ] -> bool {
+        // todo: create a ui w/ imgui
 
-    test.detach( );
+        return true;
+        } );
 
     while ( true )
         std::this_thread::sleep_for( std::chrono::seconds( 69 ) );
