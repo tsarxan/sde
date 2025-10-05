@@ -2,6 +2,8 @@
 
 auto main( ) -> int {
     ui_t ui( [ & ] -> bool {
+        std::printf( "Hello from ui\n" );
+
         // todo: create a ui w/ imgui
 
         return true;
