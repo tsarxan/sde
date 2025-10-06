@@ -49,3 +49,6 @@ CMakeUserPresets.json
 # Building
 debug
 release
+
+# ImGui (testing)
+*.ini
