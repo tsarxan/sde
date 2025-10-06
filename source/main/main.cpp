@@ -2,15 +2,18 @@
 
 auto main( ) -> int {
     ui_t ui( [ & ] -> bool {
-        std::printf( "Hello from ui\n" );
+        if ( ImGui::Begin( "SDE" ) ) {
+            // ...
+        }
 
-        // todo: create a ui w/ imgui
+        ImGui::End( );
 
         return true;
         } );
-
+    
+    // gotta stop this while true loop after an event
     while ( true )
-        std::this_thread::sleep_for( std::chrono::seconds( 69 ) );
+        std::this_thread::sleep_for( std::chrono::seconds( 1 ) );
 
     return 0;
 }
