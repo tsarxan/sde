@@ -52,3 +52,6 @@ release
 
 # ImGui (testing)
 *.ini
+
+# Visual Studio Code
+.vscode
