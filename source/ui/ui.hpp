@@ -80,14 +80,14 @@ namespace sde {
                 IMGUI_CHECKVERSION( );
                 ImGui::CreateContext( );
 
-                ImGuiIO& io = ImGui::GetIO( ); ( void )( io );
+                auto& io = ImGui::GetIO( ); ( void )( io );
                 io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
                 ImGui::StyleColorsDark( );
 
                 auto clear_color = ImVec4(0.f, 0.f, 0.f, 1.f);
 
-                ImGuiStyle& style = ImGui::GetStyle( );
+                auto& style = ImGui::GetStyle( );
                 style.ScaleAllSizes( main_scale );
                 style.FontScaleDpi = main_scale;
 

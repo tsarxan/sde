@@ -13,6 +13,6 @@ auto main( ) -> int {
     // gotta stop this while true loop after an event
     while ( ui.is_rendering( ) )
         std::this_thread::sleep_for( std::chrono::seconds( 1 ) );
-
+ 
     return 0;
 }
