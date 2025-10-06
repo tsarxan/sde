@@ -5,6 +5,7 @@
 
 #include <thread>
 #include <string>
+#include <format>
 #include <functional>
 #include <stdexcept>
 
@@ -34,95 +35,126 @@ auto error_callback( int error, const char* message ) -> void {
     #else
         throw std::runtime_error( std::string( "opengl error: %s\n", message ) ); // gotta fix later
     #endif
-
-    std::this_thread::sleep_for( std::chrono::seconds( 10 ) );
 }
 
-struct ui_t {
-private:
+auto get_fps_from_glfw( double& oldest_time ) -> float {
+    auto delta = ( glfwGetTime( ) - oldest_time );
+    return ( delta <= 0.0 ) ? 0.f : ( oldest_time = oldest_time + delta, ( 1.f / static_cast< float >( delta ) ) );
+}
 
-public:
-    // ...
+namespace sde {
+    struct ui_t {
+    private:
+        bool rendering = true; // set this to true because we dont know when it starts lowk
 
-    ui_t( render_t render ) {
-        auto ui_thread = std::thread( [ & ] {
-            glfwSetErrorCallback( error_callback ); // error setup
+    public:
+        auto is_rendering( ) const -> bool {
+            return rendering;
+        }
 
-            // glfw init
-            if ( !glfwInit( ) )
-                throw std::runtime_error( "couldn't initialize GLFW for ui." );
+        ui_t( render_t render ) {
+            // ...
 
-            // gl version
-            glfwWindowHint( GLFW_CONTEXT_VERSION_MAJOR, 2 ); // misc
-            glfwWindowHint( GLFW_CONTEXT_VERSION_MINOR, 0 ); // misc
-        
-            // glfw window
-            auto main_scale = ImGui_ImplGlfw_GetContentScaleForMonitor( glfwGetPrimaryMonitor( ) );
-            auto* window = glfwCreateWindow( 640, 480, "SDE", NULL, NULL );
-            if ( !window )
-                throw std::runtime_error( "couldn't create GLFW window for ui." );
+            auto ui_thread = std::thread( [ & ] {
+                glfwSetErrorCallback( error_callback ); // error setup
 
-            glfwMakeContextCurrent( window );
-            glfwSwapInterval( 1 ); // vsync
+                // glfw init
+                if ( !glfwInit( ) )
+                    throw std::runtime_error( "couldn't initialize GLFW for ui." );
 
-            // imgui context & io
-            IMGUI_CHECKVERSION( );
-            ImGui::CreateContext( );
+                // gl version
+                glfwWindowHint( GLFW_CONTEXT_VERSION_MAJOR, 2 ); // misc
+                glfwWindowHint( GLFW_CONTEXT_VERSION_MINOR, 0 ); // misc
+            
+                // glfw window
+                auto main_scale = ImGui_ImplGlfw_GetContentScaleForMonitor( glfwGetPrimaryMonitor( ) );
+                auto* window = glfwCreateWindow( 640, 480, "SDE", NULL, NULL );
+                if ( !window )
+                    throw std::runtime_error( "couldn't create GLFW window for ui." );
 
-            ImGuiIO& io = ImGui::GetIO( ); ( void )( io );
-            io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+                auto oldest_time = glfwGetTime( );
+                glfwMakeContextCurrent( window );
+                glfwSwapInterval( 0 ); // vsync
 
-            ImGui::StyleColorsDark( );
+                // imgui context & io
+                IMGUI_CHECKVERSION( );
+                ImGui::CreateContext( );
 
-            auto clear_color = ImVec4(0.f, 0.f, 0.f, 1.f);
+                ImGuiIO& io = ImGui::GetIO( ); ( void )( io );
+                io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
-            ImGuiStyle& style = ImGui::GetStyle( );
-            style.ScaleAllSizes( main_scale );
-            style.FontScaleDpi = main_scale;
+                ImGui::StyleColorsDark( );
 
-            // imgui init
-            ImGui_ImplGlfw_InitForOpenGL( window, true );
-            ImGui_ImplOpenGL2_Init( );
+                auto clear_color = ImVec4(0.f, 0.f, 0.f, 1.f);
 
-            // render loop
-            while ( !glfwWindowShouldClose( window ) ) {
-                glfwPollEvents( );
-                if ( glfwGetWindowAttrib( window, GLFW_ICONIFIED ) != 0 ) {
-                    ImGui_ImplGlfw_Sleep( 10 );
-                    continue;
+                ImGuiStyle& style = ImGui::GetStyle( );
+                style.ScaleAllSizes( main_scale );
+                style.FontScaleDpi = main_scale;
+
+                // imgui init
+                ImGui_ImplGlfw_InitForOpenGL( window, true );
+                ImGui_ImplOpenGL2_Init( );
+
+                // render loop
+                while ( !glfwWindowShouldClose( window ) ) {
+                    glfwPollEvents( );
+                    if ( glfwGetWindowAttrib( window, GLFW_ICONIFIED ) != 0 ) {
+                        ImGui_ImplGlfw_Sleep( 10 );
+                        continue;
+                    }
+
+                    ImGui_ImplOpenGL2_NewFrame();
+                    ImGui_ImplGlfw_NewFrame();
+                    ImGui::NewFrame();
+
+                    auto* viewport = ImGui::GetMainViewport( );
+                    ImGui::SetNextWindowPos( viewport->Pos );
+                    ImGui::SetNextWindowSize( viewport->Size );
+
+                    if ( !render( ) )
+                        break;
+
+                    ImGui::Render( );
+                    
+                    int display_w, display_h;
+                    glfwGetFramebufferSize( window, &display_w, &display_h );
+                    glViewport( 0, 0, display_w, display_h );
+                    glClearColor( clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w );
+                    glClear( GL_COLOR_BUFFER_BIT );
+
+                    ImGui_ImplOpenGL2_RenderDrawData( ImGui::GetDrawData( ) );
+
+                    glfwMakeContextCurrent( window );
+                    glfwSwapBuffers( window );
+
+                    auto fps = get_fps_from_glfw( oldest_time );
+                    glfwSetWindowTitle(
+                        window,
+                        std::string(
+                            std::vformat(
+                                "SDE - FPS: {:.2f}", 
+                                std::make_format_args( 
+                                    fps
+                                ) 
+                            ) 
+                        ).c_str( ) 
+                    );
                 }
 
-                ImGui_ImplOpenGL2_NewFrame();
-                ImGui_ImplGlfw_NewFrame();
-                ImGui::NewFrame();
+                // destroy imgui
+                ImGui_ImplOpenGL2_Shutdown( );
+                ImGui_ImplGlfw_Shutdown( );
+                ImGui::DestroyContext( );
 
-                if ( !render( ) )
-                    break;
-
-                ImGui::Render();
+                // destroy glfw
+                glfwDestroyWindow( window );
+                glfwTerminate( );
                 
-                int display_w, display_h;
-                glfwGetFramebufferSize( window, &display_w, &display_h );
-                glViewport( 0, 0, display_w, display_h );
-                glClearColor( clear_color.x * clear_color.w, clear_color.y * clear_color.w, clear_color.z * clear_color.w, clear_color.w );
-                glClear( GL_COLOR_BUFFER_BIT );
+                // set rendering boolean
+                rendering = false;
+                } );
 
-                ImGui_ImplOpenGL2_RenderDrawData( ImGui::GetDrawData( ) );
-
-                glfwMakeContextCurrent( window );
-                glfwSwapBuffers( window );
-            }
-
-            // destroy imgui
-            ImGui_ImplOpenGL2_Shutdown();
-            ImGui_ImplGlfw_Shutdown();
-            ImGui::DestroyContext();
-
-            // destroy glfw
-            glfwDestroyWindow( window );
-            glfwTerminate( );
-            } );
-
-        ui_thread.detach( ); // im gonna fuck my self if this crashes
-    }
-};
+            ui_thread.detach( ); // im gonna fuck my self if this crashes
+        }
+    };
+}
