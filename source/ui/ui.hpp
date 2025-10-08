@@ -3,11 +3,12 @@
 #define OPENGL
 #define LENIENT_ERRORS
 
+#include <mutex>
 #include <thread>
 #include <string>
 #include <format>
-#include <functional>
 #include <stdexcept>
+#include <functional>
 
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -27,7 +28,7 @@
     #error no renderer specified for build
 #endif
 
-using render_t = std::function< bool( ) >;
+using interface_t = std::function< bool( ) >;
 
 auto error_callback( int error, const char* message ) -> void {
     #ifdef LENIENT_ERRORS
@@ -43,19 +44,81 @@ auto get_fps_from_glfw( double& oldest_time ) -> float {
 }
 
 namespace sde {
+
+    template< typename type_t >
+    class table_t {
+    private:
+        std::vector< type_t > local_vector = { };    
+        mutable std::mutex local_mutex;
+
+    public:
+        auto get_raw_vector( ) const -> std::vector< type_t > {
+            return local_vector;
+        }
+
+        auto get_raw_mutex( ) const -> std::mutex {
+            return local_mutex;
+        }
+
+        auto add_element( const type_t& element ) -> void {
+            std::scoped_lock lock( local_mutex );
+            local_vector.push_back( element );
+        }
+
+        auto add_element( type_t&& element ) -> void {
+            std::scoped_lock lock( local_mutex );
+            local_vector.push_back( std::move( element ) );
+        }
+
+        [[ nodiscard ]] auto get_element( const size_t position ) const -> std::optional< type_t > {
+            std::scoped_lock lock( local_mutex );
+
+            if ( position >= local_vector.size( ) )
+                return std::nullopt;
+
+            return local_vector[ position ];
+        }
+
+        [[ nodiscard ]] auto size( ) const noexcept -> size_t {
+            std::scoped_lock lock( local_mutex );
+            return local_vector.size( );
+        }
+
+        [[nodiscard]] auto snapshot() const -> std::vector< type_t > {
+            std::scoped_lock lock( local_mutex );
+            return local_vector;
+        }
+
+        auto clear( ) -> void {
+            std::scoped_lock lock( local_mutex );
+            local_vector.clear( );
+        }
+
+        table_t( ) = default;
+        table_t( const table_t& ) = delete;
+        table_t& operator=( const table_t& ) = delete;
+    };
+
     struct ui_t {
     private:
-        bool rendering = true; // set this to true because we dont know when it starts lowk
+        const std::string window_name;
+        table_t< interface_t > interfaces{ };
+        std::atomic< bool > rendering = true; // set this to true because we dont know when it starts lowk
 
     public:
         auto is_rendering( ) const -> bool {
             return rendering;
         }
 
-        ui_t( render_t render ) {
+        auto add_interface( interface_t interface ) -> bool {
+            interfaces.add_element( interface );
+            return true;
+        }
+
+        ui_t( std::string_view window_name ) : window_name( window_name ) {
             // ...
 
-            auto ui_thread = std::thread( [ & ] {
+            auto ui_thread = std::thread( [ this ] {
                 glfwSetErrorCallback( error_callback ); // error setup
 
                 // glfw init
@@ -68,7 +131,7 @@ namespace sde {
             
                 // glfw window
                 auto main_scale = ImGui_ImplGlfw_GetContentScaleForMonitor( glfwGetPrimaryMonitor( ) );
-                auto* window = glfwCreateWindow( 640, 480, "SDE", NULL, NULL );
+                auto* window = glfwCreateWindow( 640, 480, "default_title", NULL, NULL );
                 if ( !window )
                     throw std::runtime_error( "couldn't create GLFW window for ui." );
 
@@ -82,6 +145,7 @@ namespace sde {
 
                 auto& io = ImGui::GetIO( ); ( void )( io );
                 io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+                io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
                 ImGui::StyleColorsDark( );
 
@@ -108,11 +172,14 @@ namespace sde {
                     ImGui::NewFrame();
 
                     auto* viewport = ImGui::GetMainViewport( );
-                    ImGui::SetNextWindowPos( viewport->Pos );
-                    ImGui::SetNextWindowSize( viewport->Size );
 
-                    if ( !render( ) )
-                        break;
+                    for ( auto interface : this->interfaces.snapshot( ) ) {
+                        ImGui::SetNextWindowPos( viewport->Pos );
+                        ImGui::SetNextWindowSize( viewport->Size );
+
+                        if ( !interface( ) )
+                            throw std::runtime_error( "imgui window had a failure or sum" );
+                    }
 
                     ImGui::Render( );
                     
@@ -127,18 +194,8 @@ namespace sde {
                     glfwMakeContextCurrent( window );
                     glfwSwapBuffers( window );
 
-                    auto fps = get_fps_from_glfw( oldest_time );
-                    glfwSetWindowTitle(
-                        window,
-                        std::string(
-                            std::vformat(
-                                "SDE - FPS: {:.2f}", 
-                                std::make_format_args( 
-                                    fps
-                                ) 
-                            ) 
-                        ).c_str( ) 
-                    );
+                    const auto title = std::format( "{} - FPS: {:.2f}", this->window_name, get_fps_from_glfw( oldest_time ) );
+                    glfwSetWindowTitle( window, title.c_str( ) );
                 }
 
                 // destroy imgui
@@ -151,10 +208,11 @@ namespace sde {
                 glfwTerminate( );
                 
                 // set rendering boolean
-                rendering = false;
+                this->rendering = false;
                 } );
 
-            ui_thread.detach( ); // im gonna fuck my self if this crashes
+            ui_thread.detach( ); // im gonna fuck myself if this crashes
         }
     };
+
 }

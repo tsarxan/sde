@@ -19,36 +19,28 @@ set(imgui_sources
     "${imgui_dir}/backends/imgui_impl_opengl2.cpp"
 )
 
-find_package(OpenGL REQUIRED)
-find_package(glfw3 REQUIRED)
-
 file(GLOB_RECURSE source_files "${source_dir}/*.cpp")
-
 add_executable(SDE ${source_files} ${imgui_sources})
-
-include_directories(
-    "${source_dir}"
-
-    "${libraries_dir}/imgui/"
-    "${libraries_dir}/imgui/backends"
-    
-    "${libraries_dir}/json/"
-)
 
 target_include_directories(SDE PRIVATE
     "${source_dir}"
-
     "${imgui_dir}"
     "${imgui_dir}/backends"
-
     "${libraries_dir}/json"
 )
+
+find_package(OpenGL REQUIRED)
+find_package(glfw3 REQUIRED)
 
 target_link_libraries(SDE PRIVATE
     glfw
     OpenGL::GL
+    X11
+    Xrandr
+    Xi
+    Xxf86vm
+    Xcursor
     pthread
     dl
+    m
 )
-
-target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_23)
